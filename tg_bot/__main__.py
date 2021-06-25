@@ -1,12 +1,17 @@
-import importlib
 import os
+import importlib
 import re
 import datetime
 from typing import Optional, List
 import resource
 import platform
+import time
 import sys
 import traceback
+import requests
+from parsel import Selector
+import json
+from urllib.request import urlopen
 from sys import argv
 from telegram import Message, Chat, Update, Bot, User
 from telegram import ParseMode, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
@@ -14,23 +19,70 @@ from telegram.error import Unauthorized, BadRequest, TimedOut, NetworkError, Cha
 from telegram.ext import CommandHandler, Filters, MessageHandler, CallbackQueryHandler
 from telegram.ext.dispatcher import run_async, DispatcherHandlerStop, Dispatcher
 from telegram.utils.helpers import escape_markdown
-from tg_bot import dispatcher, updater, TOKEN, WEBHOOK, SUDO_USERS, OWNER_ID, CERT_PATH, PORT, URL, LOGGER, \
-    ALLOW_EXCL, TOKEN, INTRO_TXT
+from tg_bot import dispatcher, updater, TOKEN, WEBHOOK, SUDO_USERS, OWNER_ID, CERT_PATH, PORT, URL, LOGGER, OWNER_NAME, ALLOW_EXCL, telethn,pbot,SUPPORT_CHAT,StartTime
 from tg_bot.modules import ALL_MODULES
 from tg_bot.modules.helper_funcs.chat_status import is_user_admin
 from tg_bot.modules.helper_funcs.misc import paginate_modules
-import tg_bot.modules.helper_funcs.panel_string as HELP_PANEL_STRING
 from tg_bot.modules.connection import connected
 from tg_bot.modules.connection import connect_button
 
 
-VERSION = "5.5.2"
+def get_readable_time(seconds: int) -> str:
+    count = 0
+    ping_time = ""
+    time_list = []
+    time_suffix_list = ["s", "m", "h", "days"]
+
+    while count < 4:
+        count += 1
+        remainder, result = divmod(seconds, 60) if count < 3 else divmod(seconds, 24)
+        if seconds == 0 and remainder == 0:
+            break
+        time_list.append(int(result))
+        seconds = int(remainder)
+
+    for x in range(len(time_list)):
+        time_list[x] = str(time_list[x]) + time_suffix_list[x]
+    if len(time_list) == 4:
+        ping_time += time_list.pop() + ", "
+
+    time_list.reverse()
+    ping_time += ":".join(time_list)
+
+    return ping_time
+
+
+
+
+PM_START_TEXT = """
+
+Hello {} , nice to meet you!
+I'm Ꮐ  ᖇ  ᗴ  Ꭲ  ᗩ, a full-fledged group management bot built to help you manage your group easily.
+
+All of the possible commands can be used properly if I am an administrator in your group otherwise, I will not able to restrict users, send certain predefined actions etc.
+
+Join my [news channel](https://t.me/Aurora_Updates) to get information on all the latest updates.
+"""
+
+
+HELP_STRINGS = """
+*MAIN* COMMANDS AVAILABLE:[{}](https://telegra.ph/file/62f2a172c56a110c19b01.jpg)
+
+""".format(dispatcher.bot.first_name, "" if not ALLOW_EXCL else "\nAll commands can either be used with / or !.\n")
+
+
+
+VERSION = "6.0"
 
 def vercheck() -> str:
     return str(VERSION)
 
-HELP_STRINGS = HELP_PANEL_STRING.HELP.format(dispatcher.bot.first_name, "" if not ALLOW_EXCL else "\nAll commands can either be used with / or !.\n")
-INTRO_TXT = os.environ.get('INTRO_TXT', None)
+
+SOURCE_STRING = """
+⚡I'm built in python3, using the python-telegram-bot library, and am fully opensource - you can find what makes me tick [here](https://github.com)
+⚡You Can Clone Me [Here](https://heroku.com/deploy?template=)
+"""
+
 
 IMPORTED = {}
 MIGRATEABLE = []
@@ -45,8 +97,12 @@ USER_SETTINGS = {}
 
 GDPR = []
 
-
-
+START_IMG = os.environ.get('START_IMG', None)
+if START_IMG is None:
+    img = "https://telegra.ph/file/62f2a172c56a110c19b01.jpg"
+else:
+  img = START_IMG    
+    
 for module_name in ALL_MODULES:
     imported_module = importlib.import_module("tg_bot.modules." + module_name)
     if not hasattr(imported_module, "__mod_name__"):
@@ -108,12 +164,12 @@ def test(bot: Bot, update: Update):
 def start(bot: Bot, update: Update, args: List[str]):
     print("Start")
     chat = update.effective_chat  # type: Optional[Chat]
+    uptime = get_readable_time((time.time() - StartTime))
     query = update.callback_query
     if update.effective_chat.type == "private":
         if len(args) >= 1:
             if args[0].lower() == "help":
-                send_help(update.effective_chat.id, (chat.id, "send-help").format(
-                     dispatcher.bot.first_name, "" if not ALLOW_EXCL else tld(chat.id, "\nAll commands can either be used with `/` or `!`.\n")))
+                send_help(update.effective_chat.id, HELP_STRINGS)
 
             elif args[0].lower().startswith("stngs_"):
                 match = re.match("stngs_(.*)", args[0].lower())
@@ -130,7 +186,12 @@ def start(bot: Bot, update: Update, args: List[str]):
         else:
             send_start(bot, update)
     else:
-        update.effective_message.reply_text("Hey...You why are you itching ME...🙄 ")
+        update.effective_message.reply_text(
+            "I'm awake already!\n<b>Haven't slept since:</b> <code>{}</code>".format(
+                uptime
+            ),
+            parse_mode=ParseMode.HTML,
+        )
 
 def send_start(bot, update):
     #Try to remove old message
@@ -139,23 +200,23 @@ def send_start(bot, update):
         query.message.delete()
     except:
         pass
+
     chat = update.effective_chat  # type: Optional[Chat]
-    first_name = update.effective_user.first_name
-    text = "𝐇𝐞𝐲 *{}* 𝒂𝒅𝒅 𝒎𝒆 𝒕𝒐 𝒚𝒐𝒖𝒓 𝒈𝒓𝒐𝒖𝒑"
-    text += "\n𝙸𝚊𝚖 {} 𝚊𝚗 𝚙𝚛𝚘𝚏𝚏𝚎𝚜𝚜𝚒𝚘𝚗𝚊𝚕 𝚋𝚘𝚝"
-    text += "\n𝗝𝗼𝗶𝗻 [𝗡𝗲𝘄𝘀 𝗖𝗵𝗮𝗻𝗻𝗲𝗹 𝗙𝗼𝗿 𝘂𝗽𝗱𝗮𝘁𝗲𝘀 𝗮𝗯𝗼𝘂𝘁 𝗺𝗲](https://t.me/BlazingSquad)" 
-    text += "\n\n «*{INTRO_TXT}*»"  
+    first_name = update.effective_user.first_name 
+    text = PM_START_TEXT
 
-    keyboard = [[InlineKeyboardButton(text="✨Help", callback_data="help_back"),InlineKeyboardButton(text="✨Support✨",url="https://t.me/BlazingSquad")]]
-    keyboard += [[InlineKeyboardButton(text="⚡Add Me",url="t.me/{}?startgroup=true".format(bot.username)),InlineKeyboardButton(text="♻️Owner",url="https://t.me/jrjaiden")]]
+    keyboard = [[InlineKeyboardButton(text="ADD ME TO GROUP",url="t.me/{}?startgroup=true".format(bot.username))]]
+    keyboard += [[InlineKeyboardButton(text="Help",callback_data="help_back"),InlineKeyboardButton(text="Support",url="https://t.me/Aurora_Updates")]]
 
-    update.effective_message.reply_photo(HELP_PANEL_STRING.INTRO_IMG,text.format(escape_markdown(first_name), escape_markdown(bot.first_name)), reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.MARKDOWN)
+    update.effective_message.reply_photo(img, PM_START_TEXT.format(escape_markdown(first_name), escape_markdown(bot.first_name),OWNER_ID), 
+                                         reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True, parse_mode=ParseMode.MARKDOWN)
 
 
 def m_connect_button(bot, update):
     bot.delete_message(update.effective_chat.id, update.effective_message.message_id)
     connect_button(bot, update)
- 
+
+
 # for test purposes
 def error_callback(bot, update, error):
     try:
@@ -245,15 +306,15 @@ def get_help(bot: Bot, update: Update):
 
         update.effective_message.reply_text("Contact me in PM to get the list of possible commands.",
                                             reply_markup=InlineKeyboardMarkup(
-                                                [[InlineKeyboardButton(text="✨Help",url="t.me/{}?start=help".format(bot.username)),
-                                                InlineKeyboardButton(text="💫Support",url="https://t.me/BlazingSquad")]]))
+                                                [[InlineKeyboardButton(text="⚜️Help",url="t.me/{}?start=help".format(bot.username))],  
+                                                [InlineKeyboardButton(text="🛡Contact Creator",url="https://t.me/CoNqUeRoRmEsKeTtEr")]]))
         return
 
     elif len(args) >= 2 and any(args[1].lower() == x for x in HELPABLE):
         module = args[1].lower()
         text = "Here is the available help for the *{}* module:\n".format(HELPABLE[module].__mod_name__) \
                + HELPABLE[module].__help__
-        send_help(chat.id, text, InlineKeyboardMarkup([[InlineKeyboardButton(text="Back", callback_data="help_back")]]))
+        send_help(chat.id, text, InlineKeyboardMarkup([[InlineKeyboardButton(text="🚶‍♂️Back🚶‍♂️", callback_data="help_back")]]))
 
     else:
         send_help(chat.id, HELP_STRINGS)
@@ -308,7 +369,7 @@ def settings_button(bot: Bot, update: Update):
             query.message.reply_text(text=text,
                                      parse_mode=ParseMode.MARKDOWN,
                                      reply_markup=InlineKeyboardMarkup(
-                                         [[InlineKeyboardButton(text="Back",
+                                         [[InlineKeyboardButton(text="🏃🏻‍♂️Back🏃🏻‍♂️",
                                                                 callback_data="stngs_back({})".format(chat_id))]]))
 
         elif prev_match:
@@ -367,7 +428,7 @@ def get_settings(bot: Bot, update: Update):
             text = "Click here to get this chat's settings, as well as yours."
             msg.reply_text(text,
                            reply_markup=InlineKeyboardMarkup(
-                               [[InlineKeyboardButton(text="Settings",
+                               [[InlineKeyboardButton(text="⚙️Settings⚙️",
                                                       url="t.me/{}?start=stngs_{}".format(
                                                           bot.username, chat.id))]]))
         else:
@@ -398,13 +459,26 @@ def migrate_chats(bot: Bot, update: Update):
     raise DispatcherHandlerStop
 
 
+def main():
+
+    if SUPPORT_CHAT is not None and isinstance(SUPPORT_CHAT, str):
+        try:
+            dispatcher.bot.sendMessage(f"@{SUPPORT_CHAT}", "Yes I'm alive 🧞‍♂️")
+        except Unauthorized:
+            LOGGER.warning(
+                "Bot isnt able to send message to support_chat, go and check!"
+            )
+        except BadRequest as e:
+            LOGGER.warning(e.message)
+
+
 @run_async
 def source(bot: Bot, update: Update):
     user = update.effective_message.from_user
     chat = update.effective_chat  # type: Optional[Chat]
 
     if chat.type == "private":
-        update.effective_message.reply_text(HELP_PANEL_STRING.SOURCE_STRING, parse_mode=ParseMode.MARKDOWN)
+        update.effective_message.reply_text(SOURCE_STRING, parse_mode=ParseMode.MARKDOWN)
 
     else:
         try:
@@ -414,6 +488,74 @@ def source(bot: Bot, update: Update):
         except Unauthorized:
             update.effective_message.reply_text("Contact me in PM first to get source information.")
 
+@run_async
+def imdb_searchdata(bot: Bot, update: Update):
+    query_raw = update.callback_query
+    query = query_raw.data.split('$')
+    print(query)
+    if query[1] != query_raw.from_user.username:
+        return
+    title = ''
+    rating = ''
+    date = ''
+    synopsis = ''
+    url_sel = 'https://www.imdb.com/title/%s/' % (query[0])
+    text_sel = requests.get(url_sel).text
+    selector_global = Selector(text = text_sel)
+    title = selector_global.xpath('//div[@class="title_wrapper"]/h1/text()').get().strip()
+    try:
+        rating = selector_global.xpath('//div[@class="ratingValue"]/strong/span/text()').get().strip()
+    except:
+        rating = '-'
+    try:
+        date = '(' + selector_global.xpath('//div[@class="title_wrapper"]/h1/span/a/text()').getall()[-1].strip() + ')'
+    except:
+        date = selector_global.xpath('//div[@class="subtext"]/a/text()').getall()[-1].strip()
+    try:
+        synopsis_list = selector_global.xpath('//div[@class="summary_text"]/text()').getall()
+        synopsis = re.sub(' +',' ', re.sub(r'\([^)]*\)', '', ''.join(sentence.strip() for sentence in synopsis_list)))
+    except:
+        synopsis = '_No synopsis available._'
+    movie_data = '*%s*, _%s_\n★ *%s*\n\n%s' % (title, date, rating, synopsis)
+    query_raw.edit_message_text(
+        movie_data, 
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+@run_async
+def imdb(bot: Bot, update: Update, args):
+    message = update.effective_message
+    query = ''.join([arg + '_' for arg in args]).lower()
+    if not query:
+        bot.send_message(
+            message.chat.id,
+            'You need to specify a movie/show name!'
+        )
+        return
+    url_suggs = 'https://v2.sg.media-imdb.com/suggests/%s/%s.json' % (query[0], query)
+    json_url = urlopen(url_suggs)
+    suggs_raw = ''
+    for line in json_url:
+        suggs_raw = line
+    skip_chars = 6 + len(query)
+    suggs_dict = json.loads(suggs_raw[skip_chars:][:-1])
+    if suggs_dict:
+        button_list = [[
+                InlineKeyboardButton(
+                    text = str(sugg['l'] + ' (' + str(sugg['y']) + ')'), 
+                    callback_data = str(sugg['id']) + '$' + str(message.from_user.username)
+                )] for sugg in suggs_dict['d'] if 'y' in sugg
+        ]
+        reply_markup = InlineKeyboardMarkup(button_list)
+        bot.send_message(
+            message.chat.id,
+            'Which one? ',
+            reply_markup = reply_markup
+        )
+    else:
+        pass             
+            
+            
 # Avoid memory dead
 def memory_limit(percentage: float):
     if platform.system() != "Linux":
@@ -450,6 +592,9 @@ def memory(percentage=0.5):
 def main():
     test_handler = CommandHandler("test", test)
     start_handler = CommandHandler("start", start, pass_args=True)
+    
+    IMDB_HANDLER = CommandHandler('imdb', imdb, pass_args=True)
+    IMDB_SEARCHDATAHANDLER = CallbackQueryHandler(imdb_searchdata)
    
     start_callback_handler = CallbackQueryHandler(send_start, pattern=r"bot_start")
     dispatcher.add_handler(start_callback_handler)
@@ -476,24 +621,11 @@ def main():
     dispatcher.add_handler(migrate_handler)
     dispatcher.add_handler(source_handler)
     dispatcher.add_handler(M_CONNECT_BTN_HANDLER)
-    
-
-
-    
-    
-
-
-    
-
-
-    
-
+    dispatcher.add_handler(IMDB_HANDLER)
+    dispatcher.add_handler(IMDB_SEARCHDATAHANDLER)
     
 
     # dispatcher.add_error_handler(error_callback)
-
-    # add antiflood processor
-    Dispatcher.process_update = process_update
 
     if WEBHOOK:
         LOGGER.info("Using webhooks.")
@@ -508,75 +640,21 @@ def main():
             updater.bot.set_webhook(url=URL + TOKEN)
 
     else:
-        LOGGER.info("Bot is running...")
+        LOGGER.info("tg_bot running...")
         updater.start_polling(timeout=15, read_latency=4)
 
-  
-    # if len(argv) not in (1, 3, 4):
-        # tbot.disconnect()
-    # else:
-        # tbot.run_until_disconnected()
-
+        
+    if len(argv) not in (1, 3, 4):
+        telethn.disconnect()
+    else:
+        telethn.run_until_disconnected()
+      
+      
     updater.idle()
 
-
-CHATS_CNT = {}
-CHATS_TIME = {}
-
-
-def process_update(self, update):
-    # An error happened while polling
-    if isinstance(update, TelegramError):
-        try:
-            self.dispatch_error(None, update)
-        except Exception:
-            self.logger.exception('An uncaught error was raised while handling the error')
-        return
-
-    now = datetime.datetime.utcnow()
-    cnt = CHATS_CNT.get(update.effective_chat.id, 0)
-
-    t = CHATS_TIME.get(update.effective_chat.id, datetime.datetime(1970, 1, 1))
-    if t and now > t + datetime.timedelta(0, 1):
-        CHATS_TIME[update.effective_chat.id] = now
-        cnt = 0
-    else:
-        cnt += 1
-
-    if cnt > 10:
-        return
-
-    CHATS_CNT[update.effective_chat.id] = cnt
-    for group in self.groups:
-        try:
-            for handler in (x for x in self.handlers[group] if x.check_update(update)):
-                handler.handle_update(update, self)
-                break
-
-        # Stop processing with any other handler.
-        except DispatcherHandlerStop:
-            self.logger.debug('Stopping further handlers due to DispatcherHandlerStop')
-            break
-
-        # Dispatch any error.
-        except TelegramError as te:
-            self.logger.warning('A TelegramError was raised while processing the Update')
-
-            try:
-                self.dispatch_error(update, te)
-            except DispatcherHandlerStop:
-                self.logger.debug('Error handler stopped further handlers')
-                break
-            except Exception:
-                self.logger.exception('An uncaught error was raised while handling the error')
-
-        # Errors should not stop the thread.
-        except Exception:
-            self.logger.exception('An uncaught error was raised while processing the update')
-
-
+    
 if __name__ == '__main__':
     LOGGER.info("Successfully loaded modules: " + str(ALL_MODULES))
-    # tbot.start(bot_token=TOKEN)
+    telethn.start(bot_token=TOKEN)
+    pbot.start()
     main()
-    # LOGGER.info("Bot is started to running Pls join our updates channel for more updates")
